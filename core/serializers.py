@@ -53,6 +53,11 @@ class ConversationSerializer(serializers.ModelSerializer):
     buyer = PublicSerializer(read_only = True)
     seller = PublicSerializer(read_only = True)
 
+    ad_id = serializers.PrimaryKeyRelatedField(
+        queryset = Ad.objects.all(),
+        source = 'ad',
+        write_only = True
+    )
     class Meta:
         model = Conversation
         fields = ['id', 'ad', 'buyer', 'seller', 'created_at']
@@ -80,7 +85,7 @@ class ReviewSerializer(serializers.ModelSerializer):
         model =Review
         fields = ['id', 'review', 'reviewed_seller', 'ad', 'rating', 'comment', 'created_at']
 
-class TransactionReview(serializers.ModelSerializer):
+class TransactionSerializer(serializers.ModelSerializer):
     user = PublicSerializer(read_only=True)
     ad = AdPreviewSerializer(read_only=True)
 
