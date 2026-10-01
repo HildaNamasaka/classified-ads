@@ -5,9 +5,9 @@ from .models import User, Category, City, Ad, Conversation, Message, SavedSearch
 from rest_framework import permissions
 from .permissions import IsOwnerOrReadOnly, IsStaffOrReadOnly, IsParticipant, CanEditWithinWindow, IsOwner
 from django.db import Q
+from . import mpesa
 
 class UserCreate(generics.CreateAPIView):
-    queryset = User.objects.all()
     serializer_class= UserSerializer
 
 class UserDetail(generics.RetrieveUpdateDestroyAPIView):
@@ -131,9 +131,27 @@ class ReviewDetail(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = ReviewSerializer
     permission_classes = [permissions.IsAuthenticated, IsOwnerOrReadOnly]
 
+class TransactionCreate(generics.CreateAPIView):
+    serializer_class = TransactionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def perform_create(self, serializer):
+        amount = serializer.validated_data['amount']
+        phone_number=serializer.validated_data[phone_number]
+        ad = serializer.validated_data['ad']
+
+        result = stk_push(
+            amount=amount,
+            phone_number=phone_number,
+            ad=ad            
+        )
+        serializer.save(user=self.request.user)
+
 class TransactionList(generics.ListAPIView):
     serializer_class = TransactionSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return Transaction.objects.filter(user = self.request.user)
+        return Transaction.objects.filter(user=self.request.user)
+    
+    

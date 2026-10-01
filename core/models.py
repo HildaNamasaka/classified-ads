@@ -147,8 +147,17 @@ class Review(models.Model):
     def __str__(self):
         return f'{self.reviewer} rating on {self.ad}'
 
+class TransactionStatus(models.TextChoices):
+    PENDING = 'pending'
+    SUCCESS = 'success'
+    FAILED = 'failed'
 class Transaction(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='transactions', on_delete=models.CASCADE)
+    checkout_request_id = models.CharField(max_length=50, unique=True, blank=True, null=True)
+    mpesa_receipt_number = models.CharField(max_length=250, blank=True, null=True)
+    status = models.CharField(max_length=20, choices=TransactionStatus.choices, default='pending')
+    result_desc = models.CharField(max_length=250, blank=True, null=True)
+    phone_number = models.CharField(max_length=250)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     ad = models.ForeignKey(Ad, related_name='transactions', on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
