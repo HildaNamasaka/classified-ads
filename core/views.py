@@ -1,11 +1,18 @@
 from django.shortcuts import get_object_or_404
-from rest_framework import generics
+from rest_framework import generics, serializers
 from .serializers import UserSerializer, CategorySerializer, CitySerializer, AdSerializer, ConversationSerializer, MessageSerializer, SavedSearchSerializer, ReviewSerializer, TransactionSerializer
 from .models import User, Category, City, Ad, Conversation, Message, SavedSearch, Review, Transaction
 from rest_framework import permissions
 from .permissions import IsOwnerOrReadOnly, IsStaffOrReadOnly, IsParticipant, CanEditWithinWindow, IsOwner
-from django.db import Q
-from . import mpesa
+from django.db.models import Q
+from .mpesa import stk_push
+
+from rest_framework.views import APIView
+from rest_framework import status
+from rest_framework.response import Response
+from.models import Transaction, TransactionStatus
+from rest_framework.permissions import AllowAny
+from django.db import transaction as db_transaction
 
 class UserCreate(generics.CreateAPIView):
     serializer_class= UserSerializer
@@ -53,7 +60,7 @@ class AdDetail(generics.RetrieveUpdateDestroyAPIView):
 
 class ConversationList(generics.ListCreateAPIView):
     serializer_class = ConversationSerializer
-    permission_classes = [permissions.IsAuthenticated, IsParticipant]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         user = self.request.user
@@ -131,9 +138,12 @@ class ReviewDetail(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = ReviewSerializer
     permission_classes = [permissions.IsAuthenticated, IsOwnerOrReadOnly]
 
-class TransactionCreate(generics.CreateAPIView):
+class TransactionList(generics.ListCreateAPIView):
     serializer_class = TransactionSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Transaction.objects.filter(user=self.request.user)
 
     def perform_create(self, serializer):
         amount = serializer.validated_data['amount']
@@ -145,13 +155,43 @@ class TransactionCreate(generics.CreateAPIView):
             phone_number=phone_number,
             ad=ad            
         )
-        serializer.save(user=self.request.user)
+        checkout_request_id = result.get('CheckoutRequestID')
+        if checkout_request_id is None:
+            raise serializers.ValidationError("Could not initiate M-Pesa payment. Please try again.")
+        
+        serializer.save(user=self.request.user, checkout_request_id=checkout_request_id)  
 
-class TransactionList(generics.ListAPIView):
-    serializer_class = TransactionSerializer
-    permission_classes = [permissions.IsAuthenticated]
+class MpesaCallback(APIView):
+    permission_classes = [AllowAny]
 
-    def get_queryset(self):
-        return Transaction.objects.filter(user=self.request.user)
+    def post(self, request):
+        callback_data = request.data.get('Body', {}).get('stkCallback', {})
+        checkout_request_id = callback_data.get('CheckoutRequestID')
+        result_code = callback_data.get('ResultCode')
+        result_desc = callback_data.get('ResultDesc')
+
+        with db_transaction.atomic():
+            transaction_obj = Transaction.objects.select_for_update().filter(checkout_request_id=checkout_request_id).first()
+
+            if transaction_obj is None:
+                return Response({'ResultCode' : 0, 'ResultDesc' : 'The service request is processed successfully'}, status=status.HTTP_200_OK)
+
+            if transaction_obj.status in [TransactionStatus.SUCCESS, TransactionStatus.FAILED]:
+                return Response({'ResultCode' : 0, 'ResultDesc' : 'The service request is already processed successfully'}, status=status.HTTP_200_OK)        
+
+            if result_code == 0:
+                metadata = callback_data.get('CallbackMetadata', {}).get('Item', [])
+                values = {item['Name'] : item.get('Value') for item in metadata}
+
+                transaction_obj.status = TransactionStatus.SUCCESS
+                transaction_obj.mpesa_receipt_number = values.get('MpesaReceiptNumber')
+                transaction_obj.save()
+
+            else:
+                transaction_obj.status = TransactionStatus.FAILED
+                transaction_obj.save()
+                return Response({'ResultCode' : 0, 'ResultDesc' : 'The service request is processed successfully'}, status=status.HTTP_200_OK)
+        return Response({'ResultCode' : 0, 'ResultDesc' : 'The service request is processed successfully'}, status=status.HTTP_200_OK)
+        
     
     

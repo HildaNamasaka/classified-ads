@@ -124,6 +124,9 @@ CLOUDINARY_STORAGE = {
 AUTH_USER_MODEL = 'core.User'
 
 REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES' : (
+        'rest_framework_simplejwt.authentication.JWTAuthentication'
+    ),
 
 }
 MPESA_CONSUMER_KEY=config('MPESA_CONSUMER_KEY')
