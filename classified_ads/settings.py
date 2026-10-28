@@ -9,12 +9,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-bg^3u_64$=u*#59+m-l9%wzsr7z$xesu@)3t1xi)r%1ecznuqb'
-
+SECRET_KEY = config('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '.ngrok-free.dev']
 
 
 # Application definition
@@ -124,13 +123,18 @@ CLOUDINARY_STORAGE = {
 AUTH_USER_MODEL = 'core.User'
 
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES' : (
-        'rest_framework_simplejwt.authentication.JWTAuthentication'
-    ),
-
+    'DEFAULT_AUTHENTICATION_CLASSES' : [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        ],
+    
 }
 MPESA_CONSUMER_KEY=config('MPESA_CONSUMER_KEY')
 MPESA_CONSUMER_SECRET=config('MPESA_CONSUMER_SECRET')
 MPESA_SHORTCODE=config('MPESA_SHORTCODE')
 MPESA_PASSKEY=config('MPESA_PASSKEY')
+MPESA_CALLBACK_URL=config('MPESA_CALLBACK_URL')
+MPESA_BASE_URL=config('MPESA_BASE_URL')
+
+CELERY_BROKER_URL='redis://localhost:6379/2'
+CELERY_RESULT_BACKEND='redis://localhost:6379/1'
 

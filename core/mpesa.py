@@ -6,6 +6,8 @@ from datetime import datetime
 import base64
 from decouple import config
 
+SHORTCODE = getattr(settings, 'MPESA_SHORTCODE', None)
+PASSKEY = getattr(settings, 'MPESA_PASSKEY', None)
 
 def get_mpesa_token():
     consumer_key = getattr(settings, 'MPESA_CONSUMER_KEY', None)
@@ -27,32 +29,31 @@ def get_mpesa_token():
     
 def normalize_phone_number(phone_number):
     if phone_number.startswith('0'):
-        return '254' + phone_number[1:0]
+        return '254' + phone_number[1:]
     return phone_number
+
+def generate_password():
+    timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+    raw_password = f'{SHORTCODE}{PASSKEY}{timestamp}'
+    password = base64.b64decode(raw_password.encode()).decode()
+    return (password, timestamp)
 
 def stk_push(amount, phone_number):
     access_token = get_mpesa_token()
-    phone_number = normalize_phone_number
+    phone_number = normalize_phone_number(phone_number)
 
     if access_token is None:
         return {'error' : 'Access token cannot be found'}    
 
-    shortcode = getattr(settings, 'MPESA_SHORTCODE', None)
-    passkey = getattr(settings, 'MPESA_PASSKEY', None)
-    timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-
-    raw_password = f'{shortcode}{passkey}{timestamp}'
-    password = base64.b64encode(raw_password.encode()).decode()
-
     payload = {
-        "BusinessShortCode": shortcode,
-        "Password": password,
-        "Timestamp": timestamp,
+        "BusinessShortCode": SHORTCODE,
+        "Password": generate_password(),
+        "Timestamp": generate_password(),
         "TransactionType": "CustomerPayBillOnline",
-        "Amount": amount,
-        "PartyA": phone_number,
-        "PartyB": shortcode,
-        "PhoneNumber": phone_number,
+        "Amount": int(amount),
+        "PartyA": str(phone_number),
+        "PartyB": str(SHORTCODE),
+        "PhoneNumber": str(phone_number),
         "CallBackURL": getattr(settings, 'MPESA_CALLBACK_URL', None),
         "AccountReference": "Order001",
         "TransactionDesc": "Payment for ad"
@@ -60,11 +61,38 @@ def stk_push(amount, phone_number):
 
     headers = {'Authorization' : f'Bearer {access_token}'}
     stk_url = f"{settings.MPESA_BASE_URL}/mpesa/stkpush/v1/processrequest"
+    
     try:
         response = requests.post(stk_url, headers=headers, json=payload, timeout=10)
         response.raise_for_status()
         return response.json()
     except requests.RequestException as e:
-        print(f'stk push failed', {e})
-        return('error', str(e))
+        body = e.response.text if e.response is not None else ''
+        print(f"STK push failed: {e} | {body}")
+        return {"error": str(e)}
+
+def stk_query(checkout_request_id):
+    access_token = get_mpesa_token()
+    password, timestamp = generate_password()
+    
+    if access_token is None:
+        return {'error' : 'access token not found'}
+
+    payload = {
+        'BusinessShortCode' : SHORTCODE,
+        'Password' : password,
+        'Timestamp' : timestamp,
+        'CheckoutRequestID' : checkout_request_id
+    }
+
+    query_url = f'{settings.MPESA_BASE_URL}/mpesa/stkpushquery/v1/query'
+    headers = {'Authorization' : f'Bearer {access_token}'}
+
+    try:
+        response = requests.post(query_url, headers=headers, json=payload, timeout=10)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException as e:
+        return {'error' : str(e)}
+
 

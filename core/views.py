@@ -6,6 +6,7 @@ from rest_framework import permissions
 from .permissions import IsOwnerOrReadOnly, IsStaffOrReadOnly, IsParticipant, CanEditWithinWindow, IsOwner
 from django.db.models import Q
 from .mpesa import stk_push
+from .tasks import addition
 
 from rest_framework.views import APIView
 from rest_framework import status
@@ -147,17 +148,20 @@ class TransactionList(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         amount = serializer.validated_data['amount']
-        phone_number=serializer.validated_data[phone_number]
-        ad = serializer.validated_data['ad']
+        phone_number=serializer.validated_data['phone_number']
+        
 
         result = stk_push(
             amount=amount,
             phone_number=phone_number,
-            ad=ad            
+                     
         )
+        print(result)
         checkout_request_id = result.get('CheckoutRequestID')
+        
         if checkout_request_id is None:
             raise serializers.ValidationError("Could not initiate M-Pesa payment. Please try again.")
+            
         
         serializer.save(user=self.request.user, checkout_request_id=checkout_request_id)  
 
@@ -176,22 +180,17 @@ class MpesaCallback(APIView):
             if transaction_obj is None:
                 return Response({'ResultCode' : 0, 'ResultDesc' : 'The service request is processed successfully'}, status=status.HTTP_200_OK)
 
-            if transaction_obj.status in [TransactionStatus.SUCCESS, TransactionStatus.FAILED]:
-                return Response({'ResultCode' : 0, 'ResultDesc' : 'The service request is already processed successfully'}, status=status.HTTP_200_OK)        
-
-            if result_code == 0:
+            if result_code == 0 and not transaction_obj.mpesa_receipt_number:
                 metadata = callback_data.get('CallbackMetadata', {}).get('Item', [])
                 values = {item['Name'] : item.get('Value') for item in metadata}
 
-                transaction_obj.status = TransactionStatus.SUCCESS
                 transaction_obj.mpesa_receipt_number = values.get('MpesaReceiptNumber')
+                transaction_obj.apply_result(result_code, result_desc)
                 transaction_obj.save()
 
             else:
-                transaction_obj.status = TransactionStatus.FAILED
-                transaction_obj.save()
+                transaction_obj.apply_result(result_code, result_desc)
                 return Response({'ResultCode' : 0, 'ResultDesc' : 'The service request is processed successfully'}, status=status.HTTP_200_OK)
         return Response({'ResultCode' : 0, 'ResultDesc' : 'The service request is processed successfully'}, status=status.HTTP_200_OK)
         
-    
     

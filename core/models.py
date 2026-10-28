@@ -53,7 +53,7 @@ class Ad(models.Model):
     category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name='ads')
     seller = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='ads')
     slug = models.SlugField(unique=True, blank=True)    
-    availability = models.BooleanField(default='is_available')
+    availability = models.BooleanField(default=True)
     description = models.TextField(blank=True, null=True)
     price = models.DecimalField(max_digits=10, decimal_places=2)
     photo = models.ImageField(upload_to='ads/')
@@ -150,6 +150,7 @@ class Review(models.Model):
 class TransactionStatus(models.TextChoices):
     PENDING = 'pending'
     SUCCESS = 'success'
+    CANCELLED = 'cancelled'
     FAILED = 'failed'
 class Transaction(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='transactions', on_delete=models.CASCADE)
@@ -164,13 +165,22 @@ class Transaction(models.Model):
 
     class Meta:
         ordering = ['-created_at']
-        constraints = [
-            models.UniqueConstraint(
-                name='one_transaction_amount_per_ad',
-                fields=['user', 'amount', 'ad']
-            )
-        ]
+
+    def apply_result(self, result_code, result_desc):
+        if self.status != TransactionStatus.PENDING:
+            return False
+
+        code = str(result_code)
+        if code == '0':
+            self.status = TransactionStatus.SUCCESS
+        elif code == '1032':
+            self.status = TransactionStatus.CANCELLED
+        else:
+            self.status = TransactionStatus.FAILED
+
+        self.result_desc = result_desc
+        self.save()
+        return True
 
     def __str__(self):
         return f'{self.user} transaction on {self.ad}'
-

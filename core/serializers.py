@@ -45,7 +45,7 @@ class AdSerializer(serializers.ModelSerializer):
 class AdPreviewSerializer(serializers.ModelSerializer):
     class Meta:
         model = Ad
-        fieds = ['id', 'title', 'price', 'photo']
+        fields = ['id', 'title', 'price', 'photo']
 
 
 class ConversationSerializer(serializers.ModelSerializer):
@@ -88,6 +88,11 @@ class ReviewSerializer(serializers.ModelSerializer):
 class TransactionSerializer(serializers.ModelSerializer):
     user = PublicSerializer(read_only=True)
     ad = AdPreviewSerializer(read_only=True)
+    ad_id = serializers.PrimaryKeyRelatedField(       # accepted from the client
+        queryset=Ad.objects.all(),
+        source='ad',
+        write_only=True,
+    )
 
     def phone_number(self, value):
         pattern= r'^(254[71]\d{8}|0[71]\d{8})$'
@@ -102,7 +107,7 @@ class TransactionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Transaction
-        fields = ['id', 'user', 'amount', 'ad', 'created_at']
+        fields = ['id', 'user', 'amount', 'ad','ad_id', 'phone_number', 'created_at']
         read_only_fields = ['checkout_request_id', 'mpesa_receipt_number', 'status', 'result_desc']
 
     
