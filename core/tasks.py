@@ -19,6 +19,14 @@ def check_stk_status(self, checkout_request_id):
         return
 
     result = stk_query(checkout_request_id)
+
+    if 'error' in result:
+        return
+    with db_transaction.atomic():
+        transaction_obj = Transaction.objects.select_for_update().filter(checkout_request_id=checkout_request_id, status=TransactionStatus.PENDING).first()
+        result_code = result.get('ResultCode')
+        result_desc = result.get('ResultDesc')
+        transaction_obj.apply_result(result_code, result_desc)
     
     
    
